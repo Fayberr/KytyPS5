@@ -655,6 +655,8 @@ if(BUILD_TESTING)
 		COMMAND $<TARGET_FILE:shader_recompiler_compute_tests> --image-view-cache-only)
 	add_test(NAME texture_cache_storage_sampled
 		COMMAND $<TARGET_FILE:shader_recompiler_compute_tests> --storage-sampled-only)
+	add_test(NAME texture_cache_linear_clear_readback
+		COMMAND $<TARGET_FILE:shader_recompiler_compute_tests> --linear-clear-readback-only)
 	add_test(NAME texture_cache_depth_readback
 		COMMAND $<TARGET_FILE:shader_recompiler_compute_tests> --depth-readback-only)
 	add_test(NAME compute_meta_clear_classification

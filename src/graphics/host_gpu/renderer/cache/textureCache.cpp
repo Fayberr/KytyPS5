@@ -1653,6 +1653,7 @@ void TextureCache::ClearImage(CommandBuffer& command, ImageId id, vk::Format for
 		command.Handle().beginRendering(&rendering);
 		command.Handle().endRendering();
 		CommitGpuWrite(image);
+		TrackImageDownload(id, image);
 		return;
 	}
 	image.Transit(vk::ImageLayout::eTransferDstOptimal, vk::AccessFlagBits2::eTransferWrite, {},
@@ -1671,6 +1672,7 @@ void TextureCache::ClearImage(CommandBuffer& command, ImageId id, vk::Format for
 		                                        &clear.depthStencil, 1, &native_range);
 	}
 	CommitGpuWrite(image);
+	TrackImageDownload(id, image);
 }
 
 void TextureCache::InvalidateMemory(uint64_t address, uint64_t size) {
