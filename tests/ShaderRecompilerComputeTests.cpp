@@ -33744,8 +33744,7 @@ void CheckIndirectBufferStore(VulkanHarness &vulkan) {
   candidate.indirect_resources.clear();
   program.descriptor_sources.resize(1);
   program.descriptor_sources[0].indirect_descriptor =
-      ShaderRecompiler::IR::DescriptorSource::IndirectDescriptor{};
-  program.descriptor_sources[0].indirect_descriptor->table_stride = 16;
+      DescriptorSource::IndirectDescriptor{.table_stride = 16};
   ShaderComputeInputInfo compute;
   compute.wave_size = 32;
   compute.host_subgroup_size = vulkan.SubgroupSize();
