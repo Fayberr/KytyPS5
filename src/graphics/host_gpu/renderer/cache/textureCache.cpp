@@ -1876,9 +1876,19 @@ bool TextureCache::DownloadImageMemory(ImageId id) {
 	m_scheduler.Current().Handle().pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,
 	                                               vk::PipelineStageFlagBits::eHost, {}, 0, nullptr,
 	                                               1, &barrier, 0, nullptr);
-	m_scheduler.DeferPriorityOperation([&download, range, mapped, offset] {
+	auto pending = std::make_shared<PendingDownload>(PendingDownload {range});
+	{
+		std::scoped_lock lock {m_pending_downloads_lock};
+		m_pending_downloads.push_back(pending);
+	}
+	m_scheduler.DeferPriorityOperation([this, &download, pending, range, mapped, offset] {
 		download.Invalidate(offset, range.size);
-		LibKernel::Memory::WriteBacking(range.address, mapped, range.size);
+		// Buffer reuse can wait for this callback while holding the cache lock.
+		std::scoped_lock lock {m_pending_downloads_lock};
+		if (!pending->cancelled) {
+			LibKernel::Memory::WriteBacking(range.address, mapped, range.size);
+		}
+		std::erase(m_pending_downloads, pending);
 	});
 	return true;
 }
@@ -1900,7 +1910,17 @@ void TextureCache::InvalidateMemoryFromGPU(uint64_t address, uint64_t size) {
 	}
 }
 
+void TextureCache::CancelPendingDownloads(uint64_t address, uint64_t size) {
+	std::scoped_lock lock {m_pending_downloads_lock};
+	for (const auto& pending: m_pending_downloads) {
+		if (pending->range.address < address + size && address < pending->range.End()) {
+			pending->cancelled = true;
+		}
+	}
+}
+
 void TextureCache::InvalidateCpuAliases(uint64_t address, uint64_t size) {
+	CancelPendingDownloads(address, size);
 	const auto page_begin = Common::AlignDown(address, TRACKER_PAGE_SIZE);
 	const auto page_end   = Common::AlignUp(address + size, TRACKER_PAGE_SIZE);
 	for (const auto id: FindImagesInRegion(address, size, true)) {
@@ -1974,6 +1994,7 @@ void TextureCache::UnmapMemory(uint64_t address, uint64_t size) {
 		EXIT("TextureCache: invalid unmap range\n");
 	}
 	std::scoped_lock lock {m_lock};
+	CancelPendingDownloads(address, size);
 	for (auto metadata = m_surface_metas.begin(); metadata != m_surface_metas.end();) {
 		const auto base = metadata->first;
 		if (base >= address && base < address + size) {

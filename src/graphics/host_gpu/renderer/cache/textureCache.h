@@ -13,6 +13,8 @@
 #include "graphics/host_gpu/renderer/image/tiler.h"
 
 #include <map>
+#include <memory>
+#include <mutex>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -161,6 +163,7 @@ private:
 	void ValidateImageDesc(const ImageDesc& desc) const;
 
 	void               InvalidateCpuAliases(uint64_t address, uint64_t size);
+	void               CancelPendingDownloads(uint64_t address, uint64_t size);
 	[[nodiscard]] bool DownloadImageMemory(ImageId id);
 
 	GraphicContext&                                   m_graphics;
@@ -175,6 +178,12 @@ private:
 	std::unordered_map<vk::Format, ImageId>           m_null_images;
 	Common::LeastRecentlyUsedCache<ImageId, uint64_t> m_lru_cache;
 	std::unordered_set<ImageId>                       m_download_images;
+	struct PendingDownload {
+		GuestRange range;
+		bool cancelled = false;
+	};
+	std::vector<std::shared_ptr<PendingDownload>> m_pending_downloads;
+	std::mutex                                  m_pending_downloads_lock;
 	std::map<uint64_t, MetaDataInfo>                  m_surface_metas;
 	uint64_t                                          m_total_used_memory  = 0;
 	uint64_t                                          m_trigger_gc_memory  = 0;

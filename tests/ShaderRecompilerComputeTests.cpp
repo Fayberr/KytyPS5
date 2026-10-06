@@ -367,7 +367,20 @@ struct TextureCacheTestAccess {
     return mapping;
   }
 
+  static bool ReuseDownloadBuffer(TextureCache &cache, std::atomic<bool> &release) {
+    std::lock_guard lock(cache.m_lock);
+    auto &download = cache.m_buffer_cache.GetUtilityBuffer(MemoryUsage::Download);
+    release.store(true);
+    release.notify_one();
+    const auto [mapped, offset] = download.Map(download.Size(), 4);
+    if (mapped != nullptr) {
+      download.Commit();
+    }
+    return mapped != nullptr && offset == 0;
+  }
+
   static bool TryDownload(TextureCache &cache, ImageId id) {
+    std::lock_guard lock(cache.m_lock);
     return cache.DownloadImageMemory(id);
   }
 
@@ -5210,6 +5223,83 @@ public:
             "a stale image readback replaced the newer CPU contents");
     std::printf("[host]    %-32s CPU supersession ok\n", name);
 
+    Clear(cpu_desc, 0xfeedfaceu);
+    const auto pending_tick = scheduler.CurrentTick();
+    cache.ProcessDownloadImages();
+    Require(name, "queued download remains deferred",
+            scheduler.CurrentTick() == pending_tick &&
+                ReadWord(cpu_desc.info.data.address) == cpu_value,
+            "download was published before submission");
+    cache.InvalidateMemory(cpu_desc.info.data.address, sizeof(cpu_value));
+    LibKernel::Memory::WriteBacking(cpu_desc.info.data.address, &cpu_value,
+                                    sizeof(cpu_value));
+    scheduler.Finish();
+    scheduler.DrainPriorityOperations();
+    Require(name, "CPU supersedes queued download",
+            ReadWord(cpu_desc.info.data.address) == cpu_value,
+            "deferred image publication overwrote a newer CPU write");
+    std::printf("[host]    %-32s queued CPU supersession ok\n", name);
+
+    std::atomic<bool> release_publication{false};
+    scheduler.DeferPriorityOperation([&release_publication] {
+      release_publication.wait(false);
+    });
+    Clear(desc, 0x10203040u);
+    cache.ProcessDownloadImages();
+    scheduler.Flush();
+    Require(name, "download buffer reuse",
+            TextureCacheTestAccess::ReuseDownloadBuffer(cache, release_publication),
+            "download buffer could not wrap after queued publication");
+    Require(name, "publication during buffer reuse",
+            ReadWord(desc.info.data.address) == 0x10203040u,
+            "buffer reuse did not wait for queued image publication");
+    scheduler.Finish();
+    scheduler.DrainPriorityOperations();
+    std::printf("[host]    %-32s download buffer reuse ok\n", name);
+
+    const auto [gc_image, gc_desc] = NewImage(0x8000);
+    Clear(gc_desc, 0xa1b2c3d4u);
+    const std::array gc_images{gc_image};
+    TextureCacheTestAccess::ConfigureGarbageCollection(cache, gc_images, 1000, 0);
+    cache.RunGarbageCollector();
+    Require(name, "GPU download survives eviction",
+            !TextureCacheTestAccess::Contains(cache, gc_image),
+            "garbage collection did not retire the test image");
+    scheduler.Finish();
+    scheduler.DrainPriorityOperations();
+    Require(name, "evicted GPU contents published",
+            ReadWord(gc_desc.info.data.address) == 0xa1b2c3d4u,
+            "retiring the image discarded its queued GPU download");
+
+    const auto [gc_cpu_image, gc_cpu_desc] = NewImage(0x9000);
+    Clear(gc_cpu_desc, 0xdeadbeefu);
+    const std::array gc_cpu_images{gc_cpu_image};
+    TextureCacheTestAccess::ConfigureGarbageCollection(cache, gc_cpu_images, 2000, 0);
+    cache.RunGarbageCollector();
+    Require(name, "CPU invalidation after eviction",
+            !TextureCacheTestAccess::Contains(cache, gc_cpu_image),
+            "garbage collection did not retire the CPU-supersession test image");
+    cache.InvalidateMemory(gc_cpu_desc.info.data.address, sizeof(cpu_value));
+    LibKernel::Memory::WriteBacking(gc_cpu_desc.info.data.address, &cpu_value,
+                                    sizeof(cpu_value));
+    scheduler.Finish();
+    scheduler.DrainPriorityOperations();
+    Require(name, "CPU supersedes evicted download",
+            ReadWord(gc_cpu_desc.info.data.address) == cpu_value,
+            "an evicted image's queued download overwrote newer CPU contents");
+    std::printf("[host]    %-32s eviction publication/supersession ok\n", name);
+
+    const auto [unmapped_image, unmapped_desc] = NewImage(0xa000);
+    Clear(unmapped_desc, 0xf0f0f0f0u);
+    cache.ProcessDownloadImages();
+    cache.UnmapMemory(unmapped_desc.info.data.address, unmapped_desc.info.data.size);
+    scheduler.Finish();
+    scheduler.DrainPriorityOperations();
+    Require(name, "queued download cancelled on unmap",
+            !TextureCacheTestAccess::Contains(cache, unmapped_image) &&
+                ReadWord(unmapped_desc.info.data.address) == stale,
+            "an unmapped image's queued download published retired contents");
+
     const auto [retired_image, retired_desc] = NewImage(0x3000);
     Clear(retired_desc, 0x88888888u);
     cache.UnmapMemory(retired_desc.info.data.address, retired_desc.info.data.size);
@@ -5225,17 +5315,19 @@ public:
             "readback retirement reused the stale image identity");
     std::printf("[host]    %-32s retirement/reuse ok\n", name);
 
-    Require(name, "alias clear features", RasterizationSupported(),
-            "production rasterization is required for format-alias clears");
-    const auto [alias_image, alias_desc] = NewImage(0x4000);
-    vk::ClearValue alias_clear{};
-    alias_clear.color.float32 = std::array{1.0f, 0.0f, 0.0f, 0.0f};
-    TextureCacheTestAccess::ClearImage(
-        cache, scheduler.Current(), alias_image,
-        {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}, alias_clear,
-        vk::Format::eR32Sfloat);
-    Submit(alias_desc.info.data.address, stale, 0x3f800000u);
-    std::printf("[host]    %-32s format-alias clear ok\n", name);
+    if (RasterizationSupported()) {
+      const auto [alias_image, alias_desc] = NewImage(0x4000);
+      vk::ClearValue alias_clear{};
+      alias_clear.color.float32 = std::array{1.0f, 0.0f, 0.0f, 0.0f};
+      TextureCacheTestAccess::ClearImage(
+          cache, scheduler.Current(), alias_image,
+          {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}, alias_clear,
+          vk::Format::eR32Sfloat);
+      Submit(alias_desc.info.data.address, stale, 0x3f800000u);
+      std::printf("[host]    %-32s format-alias clear ok\n", name);
+    } else {
+      std::printf("[host]    %-32s format-alias clear skipped: rasterization unavailable\n", name);
+    }
 
     auto tiled_desc = MakeLinearDesc(
         base + 0x5000, 0x1000, vk::Format::eR32Uint,
