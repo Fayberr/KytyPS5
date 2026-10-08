@@ -6,3 +6,8 @@ _Build/vscode-clang/
 _Build/
 cmake-build-debug/
 _PipelineCache/
+
+# Default emulator logs and diagnostic dumps
+_kyty.txt
+_Shaders/
+_Buffers/
