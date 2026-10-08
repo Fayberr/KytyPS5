@@ -520,13 +520,15 @@ static int KYTY_SYSV_ABI RtcTickAddMicroseconds(RtcTick* dst, const RtcTick* src
 static int KYTY_SYSV_ABI RtcTickAddSeconds(RtcTick* dst, const RtcTick* src, int64_t seconds) {
 	PRINT_NAME();
 
-	return RtcTickAddTicks(dst, src, seconds * 1000000ll);
+	return RtcTickAddTicks(dst, src,
+	                       static_cast<int64_t>(static_cast<uint64_t>(seconds) * 1000000ull));
 }
 
 static int KYTY_SYSV_ABI RtcTickAddMinutes(RtcTick* dst, const RtcTick* src, int64_t minutes) {
 	PRINT_NAME();
 
-	return RtcTickAddTicks(dst, src, minutes * 60000000ll);
+	return RtcTickAddTicks(dst, src,
+	                       static_cast<int64_t>(static_cast<uint64_t>(minutes) * 60000000ull));
 }
 
 static int KYTY_SYSV_ABI RtcTickAddHours(RtcTick* dst, const RtcTick* src, int32_t hours) {
@@ -544,7 +546,8 @@ static int KYTY_SYSV_ABI RtcTickAddDays(RtcTick* dst, const RtcTick* src, int32_
 static int KYTY_SYSV_ABI RtcTickAddWeeks(RtcTick* dst, const RtcTick* src, int32_t weeks) {
 	PRINT_NAME();
 
-	return RtcTickAddTicks(dst, src, static_cast<int64_t>(weeks) * 604800000000ll);
+	return RtcTickAddTicks(dst, src,
+	                       static_cast<int64_t>(static_cast<uint64_t>(weeks) * 604800000000ull));
 }
 
 } // namespace Rtc

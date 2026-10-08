@@ -523,6 +523,10 @@ add_executable(png_enc_tests EXCLUDE_FROM_ALL "${KYTY_TESTS_DIR}/PngEncTests.cpp
 target_link_libraries(png_enc_tests common fmt::fmt)
 target_include_directories(png_enc_tests PRIVATE ${inc_headers})
 
+add_executable(rtc_tick_arithmetic_tests EXCLUDE_FROM_ALL "${KYTY_TESTS_DIR}/RtcTickArithmeticTests.cpp")
+target_link_libraries(rtc_tick_arithmetic_tests common fmt::fmt)
+target_include_directories(rtc_tick_arithmetic_tests PRIVATE ${inc_headers})
+
 add_executable(ces_tests EXCLUDE_FROM_ALL "${KYTY_TESTS_DIR}/CesTests.cpp")
 target_link_libraries(ces_tests common fmt::fmt SDL3::SDL3-static)
 target_include_directories(ces_tests PRIVATE ${inc_headers})
@@ -632,6 +636,7 @@ if(BUILD_TESTING)
 	add_test(NAME controller_settings COMMAND $<TARGET_FILE:controller_settings_tests>)
 	add_test(NAME save_data_memory COMMAND $<TARGET_FILE:save_data_memory_tests>)
 	add_test(NAME png_enc COMMAND $<TARGET_FILE:png_enc_tests>)
+	add_test(NAME rtc_tick_arithmetic COMMAND $<TARGET_FILE:rtc_tick_arithmetic_tests>)
 	add_test(NAME ces COMMAND $<TARGET_FILE:ces_tests>)
 	add_test(NAME save_data_dialog COMMAND $<TARGET_FILE:save_data_dialog_tests>)
 	add_test(NAME http_uri_parse COMMAND $<TARGET_FILE:http_uri_parse_tests>)
@@ -708,6 +713,7 @@ if(BUILD_TESTING)
 		controller_settings_tests
 		save_data_memory_tests
 		png_enc_tests
+		rtc_tick_arithmetic_tests
 		ces_tests
 		save_data_dialog_tests
 		http_uri_parse_tests
