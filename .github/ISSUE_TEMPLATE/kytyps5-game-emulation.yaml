@@ -40,8 +40,8 @@ body:
     id: kyty-version
     attributes:
       label: KytyPS5 version
-      description: Include the exact build you tested so the report can be matched to the right code.
-      placeholder: "Example: v0.0.1"
+      description: Include the full tag of the downloaded release, or the commit hash from the startup log, so the report can be matched to the right code.
+      placeholder: "Example: KytyPS5-2026-10-08-5a88080"
     validations:
       required: true
 
@@ -72,7 +72,7 @@ body:
     attributes:
       label: Last working build / first broken build
       description: Optional. Fill this in if the same game worked in an older KytyPS5 build.
-      placeholder: "Example: last worked in v0.0.1, first broke in v0.0.1"
+      placeholder: "Example: last worked in KytyPS5-2026-10-07-038d225, first broke in KytyPS5-2026-10-08-5a88080"
 
   - type: markdown
     attributes:
